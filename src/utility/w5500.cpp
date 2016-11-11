@@ -164,7 +164,8 @@ void W5500Class::execCmdSn(SOCKET s, SockCMD _cmd) {
     // Send command to socket
     writeSnCR(s, _cmd);
     // Wait for command to complete
-    while (readSnCR(s))
+    unsigned long start = millis();
+    while (readSnCR(s) && millis() - start < 1000)
     ;
 }
 //#endif

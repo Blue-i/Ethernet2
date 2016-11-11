@@ -11,6 +11,9 @@ extern "C" {
 #include "EthernetClient.h"
 #include "EthernetServer.h"
 #include "Dns.h"
+#include "os48.h"
+
+#include "Logging.h"
 
 uint16_t EthernetClient::_srcport = 1024;
 
@@ -36,8 +39,10 @@ int EthernetClient::connect(const char* host, uint16_t port) {
 }
 
 int EthernetClient::connect(IPAddress ip, uint16_t port) {
-  if (_sock != MAX_SOCK_NUM)
-    return 0;
+  if (_sock != MAX_SOCK_NUM){
+//	  Log.Debug("Ret 1");
+	 return 0;
+  }
 
   for (int i = 0; i < MAX_SOCK_NUM; i++) {
     uint8_t s = w5500.readSnSR(i);
@@ -47,8 +52,10 @@ int EthernetClient::connect(IPAddress ip, uint16_t port) {
     }
   }
 
-  if (_sock == MAX_SOCK_NUM)
-    return 0;
+  if (_sock == MAX_SOCK_NUM){
+//	  Log.Debug("Ret 2");
+	    return 0;
+  }
 
   _srcport++;
   if (_srcport == 0) _srcport = 1024;
@@ -56,17 +63,28 @@ int EthernetClient::connect(IPAddress ip, uint16_t port) {
 
   if (!::connect(_sock, rawIPAddress(ip), port)) {
     _sock = MAX_SOCK_NUM;
+//	Log.Debug("Ret 3");
     return 0;
   }
 
+  unsigned long start = millis();
+
   while (status() != SnSR::ESTABLISHED) {
-    delay(1);
+//    delay(1);
+	os48::task()->sleep(1);
     if (status() == SnSR::CLOSED) {
       _sock = MAX_SOCK_NUM;
+//	  Log.Debug("Ret 4");
       return 0;
     }
-  }
 
+    if(millis() - start > 1000){
+    	stop();
+    	Log.Debug("Conn TO\r\n");
+    	return 0;
+    }
+  }
+//  Log.Debug("Ret 5");
   return 1;
 }
 
@@ -79,10 +97,20 @@ size_t EthernetClient::write(const uint8_t *buf, size_t size) {
     setWriteError();
     return 0;
   }
+//  uint16_t status = false;
+//  OS48_ATOMIC_BLOCK{
+//	  status = send(_sock, buf, size);
+//  }
+//  if (!status) {
+//    setWriteError();
+//    return 0;
+//  }
+
   if (!send(_sock, buf, size)) {
     setWriteError();
     return 0;
   }
+
   return size;
 }
 
@@ -124,29 +152,38 @@ void EthernetClient::flush() {
 }
 
 void EthernetClient::stop() {
-  if (_sock == MAX_SOCK_NUM)
-    return;
+	OS48_NO_KT_BLOCK{
+	  if (_sock == MAX_SOCK_NUM)
+		return;
 
-  // attempt to close the connection gracefully (send a FIN to other side)
-  disconnect(_sock);
-  unsigned long start = millis();
+	  // attempt to close the connection gracefully (send a FIN to other side)
 
-  // wait a second for the connection to close
-  while (status() != SnSR::CLOSED && millis() - start < 1000)
-    delay(1);
+	  disconnect(_sock);
+	  unsigned long start = millis();
 
-  // if it hasn't closed, close it forcefully
-  if (status() != SnSR::CLOSED)
-    close(_sock);
+	  // wait a second for the connection to close
+	  while (status() != SnSR::CLOSED && millis() - start < 1000){}
+	//    delay(1);
+	  os48::task()->sleep(1);
 
-  EthernetClass::_server_port[_sock] = 0;
-  _sock = MAX_SOCK_NUM;
+	  // if it hasn't closed, close it forcefully
+	  if (status() != SnSR::CLOSED){
+			  close(_sock);
+	  }
+
+
+	  EthernetClass::_server_port[_sock] = 0;
+	  _sock = MAX_SOCK_NUM;
+	}
 }
 
 uint8_t EthernetClient::connected() {
   if (_sock == MAX_SOCK_NUM) return 0;
   
   uint8_t s = status();
+//  Log.Debug("S %d", s);
+//  Log.Debug("A %t%s", available(), CR);
+
   return !(s == SnSR::LISTEN || s == SnSR::CLOSED || s == SnSR::FIN_WAIT ||
     (s == SnSR::CLOSE_WAIT && !available()));
 }
